@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<link href='http://fonts.googleapis.com/css?family=Amatic+SC' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Indie+Flower' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Permanent+Marker' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Josefin+Sans' rel='stylesheet' type='text/css'>
+<!--<script type="text/javascript" src="http://code.createjs.com/createjs-2013.09.25.min.js"></script>-->
+<script type="text/javascript" src="http://code.createjs.com/createjs-2013.12.12.min.js"></script>
+<script type="text/javascript" src="assets/js/jquery-1.10.2.min.js"></script>
+<script type="text/javascript">
+var stage;
+var queue;
+var pillCount, papersHit, papersMissed;
+var enemyPool;
+var enemyPool1, enemyPool2;
+var enemyLimit;
+var paper;
+var myDate;
+var myAngle=0;
+var maxPaper;
+var months;
+var tickFlag;
+var era;
+var eraNum = 0;
+var eraMissCount;
+var eraMissThreshold = 50;
+var blockerFlag = 0;
+var blockerNum = 0;
+var endDate;
+var paperFlag;
+var gameStage;
+var blockers;
+var script;
+
+//sounds
+var bgSound;
+var wind;
+
+//containers
+var opening;
+var game;
+var ending;
+
+var emitter1, emitter2, emitter3;
+
+//Constants
+var RATE = 2;
+var X_VEL = 2;
+var Y_VEL = 2;
+var SWAY = 0;
+var MIN_SCALE = .1;
+var LAYER_1_SCALE = .7;
+var LAYER_2_SCALE = .3;
+var SCALE_VARIANCE = .09;
+var LAYER_2_SPEED = 0.5;
+var TICK_INTERVAL = 35;
+var FRONT_PADDING = 0.2;
+var REAR_PADDING = 0.1;
+
+
+var MAX_SCALE = LAYER_1_SCALE + SCALE_VARIANCE;
+var MIN_SCALE = LAYER_2_SCALE - SCALE_VARIANCE;
+
+
+var dayIncrement = 1;                                   //number of days to progress per tick
+
+/* Deprecated speedup-related variables
+ var speedDays = 0;                                      //number of sped-up days remaining in speed-up
+ var speedLength = 2000;                                 //duration of speed-up, in milliseconds
+ var logSpeedFactor = 1;
+ var expSpeedFactor = 2;                                 //amount to speed up per pill (i.e. 2x speed)
+ var longDay = 30;                                     //length of an un-sped-up day, in ms
+ var msPerDay = longDay;                                 //initialize days to long days
+ var logspeed = true;                                                                            */
+
+var eradivisor = 5;
+var eraminimum = 0.3
+
+var comboCnt = 0;
+
+var horizon;
+
+
+function init() {
+    //create stage object and point it to our canvas tag
+    stage = new createjs.Stage("gameStage");
+    stage.alpha =1;
+
+    gameStage = 0;
+
+    //initialize variables
+    pillCount = papersHit = papersMissed = paperFlag = 0;
+    enemyLimit = 15;
+    enemyPool = new Array();
+    enemyPool2 = new Array();
+    manifest = [
+        {id:"paper", src:"assets/images/paper_grnd.png"}, {id:"intro_paper", src:"assets/images/start_screen.png"},
+        {id:"pill", src:"assets/images/PillButton.png"}, {id:"brMound", src:"assets/images/mound_backR.png"},
+        {id:"frMound", src:"assets/images/mound_frntR.png"}, {id:"blMound", src:"assets/images/mound_backL.png"},
+        {id:"flMound", src:"assets/images/mound_frntL.png"},{id:"chimes_1", src:"assets/sound/Chime_01.mp3"},
+        {id:"chimes_2", src:"assets/sound/Chime_02.mp3"}, {id:"cover_papers", src:"assets/images/cover_papers.png"},
+        {id:"chimes_3", src:"assets/sound/Chime_03.mp3"},{id:"chimes_4", src:"assets/sound/Chime_04.mp3"},
+        {id:"chimes_5", src:"assets/sound/Chime_05.mp3"},{id:"chimes_6", src:"assets/sound/Chime_06.mp3"},
+        {id:"chimes_7", src:"assets/sound/Chime_07.mp3"},{id:"chimes_8", src:"assets/sound/Chime_08.mp3"},
+        {id:"chimes_9", src:"assets/sound/Chime_09.mp3"},{id:"chimes_10", src:"assets/sound/Chime_10.mp3"},
+        {id:"chimes_11", src:"assets/sound/Chime_11.mp3"},{id:"chimes_12", src:"assets/sound/Chime_12.mp3"},
+        {id:"wind", src:"assets/sound/wind.mp3"},{id:"end_sound", src:"assets/sound/YouWillNeverBeGoodEnough.mp3"},
+        {id:"phone_beep", src:"assets/sound/phone_beep.mp3"}, {id:"bg_sound", src:"assets/sound/bg_sound.mp3"},
+        {id:"pill_highlite", src:"assets/images/PillButtonHighlight.png"}
+    ];
+    myDate = new Date();
+    myDate.setFullYear(1995,7,5);
+
+    //timer related variables
+    months = new Array("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");     //HT930
+    tickFlag = true;
+    myDate = new Date();
+    myDate.setFullYear(1995, 7, 5);                     //Aug 5 1995
+    endDate = new Date();
+    endDate.setFullYear(2009, 9, 31);
+
+    horizon = stage.canvas.height*0.55;
+    pillScale = 0.75;
+    era = 0;
+
+    //initialize asset loader
+    queue = new createjs.LoadQueue(false);
+    queue.installPlugin(createjs.Sound);
+    queue.addEventListener("complete", loadCompleted);
+    queue.addEventListener("progress", updateLoading);
+
+    //percent loaded
+    loaded = new createjs.Text("0%", "bold 60px Amatic SC", "#000000");
+    loaded.x = stage.canvas.width / 2;
+    loaded.y = stage.canvas.height / 2;
+    loaded.textAlign = "center";
+    stage.addChild(loaded);
+
+    script = [
+        {
+            "era": "Opening",
+            "fonts": ["bold 24px Indie Flower","bold 24px Permanent Marker"],
+            "lines": {
+                    "success": [
+                        ["But WHY do I have to take them?", "left", 0],
+                        ["Oh, Honey", "right", 1],
+                        ["I know you don't like them","right",1],
+                        ["but you NEED them to do well in school","right",1],
+                        ["But I CAN do well", "left", 0],
+                        ["Please","left",0],
+                        ["I'll try harder","left",0],
+                        ["We tried that already my love", "right", 1],
+                        ["...","right",1],
+                        ["Please, it's time to take your medicine","right",1]
+                    ]
+            }
+        },
+        {
+            "era": "Grade School",
+            "fonts": ["bold 24px Indie Flower","bold 24px Permanent Marker"],
+            "lines": {
+                "success": [
+                    ["Is there something wrong with me?", "left", 0],
+                    ["Oh, Honey...", "right", 1],
+                    ["No, it's not like that","right",1],
+                    ["But the other kids don't have to take them", "left", 0],
+                    ["I know...", "right", 1],
+                    ["Look they are going to help you do well, baby","right",1]
+                ],
+                "failure": [
+                    ["I’m not having this discussion with you!", "right", 1],
+                    ["Take your medicine!","right",1],
+                    ["I WON'T TAKE THEM!", "left", 0],
+                    ["THEY MAKE ME FEEL BAD!","left",0],
+                    ["The headaches will go away", "right", 1],
+                    ["if you go see the nurse at lunch!","right",1],
+                    ["BUT EVERYONE LOOKS AT ME FUNNY FOR THAT!", "left", 0],
+                    ["Oh, Honey...","right",1]
+                ]
+            }
+        },
+        {
+            "era": "High School",
+            "fonts": ["bold 24px Times New Roman","bold 24px Permanent Marker"],
+            "lines": {
+                "success": [
+                    ["Honey, what are you still doing up?", "right", 1],
+                    ["It's four in the morning","right",1],
+                    ["Did you get any sleep?","right",1],
+                    ["No time. Homework.", "left", 0],
+                    ["Oh... ok.", "right", 1]
+                ],
+                "failure": [
+                    ["You can't just screw around at school, damn it!", "right", 1],
+                    ["You HAVE to get you work in on time!","right",1],
+                    ["Pfft. Oh, is that right? Sorry, I wasn't aware---", "left", 0],
+                    ["Don't you dare talk to me like that!", "right", 1],
+                    ["THEN DON'T TALK TO ME LIKE I'M STUPID!", "left", 0]
+                ]
+            }
+        },
+        {
+            "era": "College",
+            "fonts": ["bold 24px Josefin Sans","bold 24px Permanent Marker"],
+            "lines": {
+                "success": [
+                    ["Hey, hun...", "right", 1],
+                    ["We haven't heard from you in a while","right",1],
+                    ["Is everything ok?","right",1],
+                    ["Please call me back.","right",1],
+                    ["Hey, are you actually coming to class today?\nLet me know soon\nI can meet you at the train", "left", 0],
+                    ["Let me know soon", "left", 0],
+                    ["I can meet you at the train", "left", 0],
+                    ["It's me again", "right", 1],
+                    ["Please hun", "right", 1],
+                    ["I'm starting to get worried", "right", 1],
+                    ["call me back when you get this", "right", 1],
+                    ["Where the hell have you been?", "left", 0],
+                    ["It's getting a little weird", "left", 0],
+                    ["Let me know you're alive, I guess", "left", 0],
+                    ["I don't know", "left", 0],
+                    ["Talk to you soon", "left", 0],
+                    ["I don't know what we did","right",1],
+                    ["-sob-","right",1],
+                    ["to make you so distant","right",1],
+                    ["Please","right",1],
+                    ["Please talk to us honey","right",1],
+                    ["We just want to help","right",1],
+                    ["I'm sorry","right",1]
+                ],
+                "failure": [
+                    ["Hey, hun...", "right", 1],
+                    ["We haven't heard from you in a while","right",1],
+                    ["Is everything ok?","right",1],
+                    ["Please call me back.","right",1],
+                    ["Hey, are you actually coming to class today?\nLet me know soon\nI can meet you at the train", "left", 0],
+                    ["Let me know soon", "left", 0],
+                    ["I can meet you at the train", "left", 0],
+                    ["It's me again", "right", 1],
+                    ["Please hun", "right", 1],
+                    ["I'm starting to get worried", "right", 1],
+                    ["call me back when you get this", "right", 1],
+                    ["Where the hell have you been?", "left", 0],
+                    ["It's getting a little weird", "left", 0],
+                    ["Let me know you're alive, I guess", "left", 0],
+                    ["I don't know", "left", 0],
+                    ["Talk to you soon", "left", 0],
+                    ["I don't know what we did","right",1],
+                    ["-sob-","right",1],
+                    ["to make you so distant","right",1],
+                    ["Please","right",1],
+                    ["Please talk to us honey","right",1],
+                    ["We just want to help","right",1],
+                    ["I'm sorry","right",1]
+                ]
+            }
+        }
+    ];
+
+    queue.loadManifest(manifest);
+}
+
+/**
+ *
+ * @param x1 x coordinate of starting point for emitter
+ * @param y1 y coordinate of starting point for emitter
+ * @param x2 x coordinate of end point for emitter
+ * @param y2 y coordinate of end point for emitter
+ * @constructor
+ */
+var Emitter = function (x1,y1,x2,y2,xVel,yVel,rate,scale){
+    this.x1 = x1;
+    this.x2 = x2;
+    this.y1 = y1;
+    this.y2 = y2;
+    this.xVel = xVel;
+    this.yVel = yVel;
+    this.rate = rate;
+    this.scale = scale;
+
+    /**
+     *
+     */
+    this.emit = function() {
+        var tempX;
+        var tempY;
+        var tempScale;
+        var yearVariance = stage.canvas.width/14*(myDate.getFullYear()-1995)*.8;
+        if(Math.random() < (this.rate *.05)*era){
+            tempY = (Math.random() * Math.abs(this.y1-this.y2)) + this.y1;
+            tempScale = Math.random()*SCALE_VARIANCE + this.scale;
+            if (this.xVel > 0) {
+                tempX = (Math.random() * Math.abs(this.x1-this.x2)) + this.x1 - yearVariance;
+                if (tempX < -maxPaper.width*tempScale) {
+                    tempY = (-tempX)*stage.canvas.height/stage.canvas.width/2;
+                    tempX = -maxPaper.width*tempScale;
+                }
+            }
+            else {
+                tempX = (Math.random() * Math.abs(this.x1-this.x2)) + this.x1 + yearVariance*LAYER_2_SCALE/LAYER_1_SCALE;
+                if (tempX > stage.canvas.width + maxPaper.width*tempScale){
+                    tempY = (tempX-stage.canvas.width)*stage.canvas.height/stage.canvas.width;
+                    tempX = stage.canvas.width + maxPaper.width*tempScale
+                }
+            }
+
+
+            createEnemy(
+                    tempX,
+                    tempY,
+                    this.xVel,
+                    (Math.random()*(this.yVel/2))+this.yVel,
+                    tempScale
+            );
+        }
+    }
+
+    /**
+     *
+     * @param x1
+     * @param y1
+     * @param x2
+     * @param y2
+     */
+    this.changeCoordinates = function(x1,y1,x2,y2) {
+        this.x1 = x1;
+        this.x2 = x2;
+        this.y1 = y1;
+        this.y2 = y2;
+    }
+
+    /**
+     *
+     * @param rate
+     */
+    this.changeRate = function(rate) {
+        this.rate = rate;
+    }
+};
+
+function updateLoading(e) {
+    loaded.text = e.progress * 100 + "%";
+}
+
+//assets all loaded
+function loadCompleted(e){
+    stage.removeChild(loaded);
+    opening = new createjs.Container();
+
+
+    blankPaper = new createjs.SpriteSheet({images: [queue.getResult('intro_paper')], frames: [[0,0,0,0,0,-0.19999999999998863,-0.6499999999999773],[0,0,73,19,0,466.8,297.35],[73,0,84,35,0,465.8,296.35],[157,0,96,54,0,468.8,298.35],[253,0,95,64,0,463.8,296.35],[348,0,95,84,0,459.8,298.35],[443,0,91,97,0,448.8,294.35],[534,0,85,104,0,440.8,287.35],[619,0,85,120,0,434.8,279.35],[704,0,86,130,0,430.8,268.35],[790,0,88,136,0,426.8,253.35000000000002],[878,0,87,132,0,420.8,233.35000000000002],[965,0,98,141,0,416.8,214.35000000000002],[1063,0,113,144,0,416.8,194.35000000000002],[1176,0,125,146,0,412.8,177.35000000000002],[1301,0,141,144,0,405.8,154.35000000000002],[1442,0,147,131,0,401.8,139.35000000000002],[1589,0,158,128,0,395.8,136.35000000000002],[1747,0,162,144,0,377.8,147.35000000000002],[0,146,156,142,0,360.8,158.35000000000002],[156,146,156,145,0,340.8,172.35000000000002],[312,146,169,146,0,315.8,188.35000000000002],[481,146,197,151,0,285.8,204.35000000000002],[678,146,230,142,0,267.8,207.35000000000002],[908,146,235,126,0,246.8,185.35000000000002],[1143,146,239,151,0,233.8,182.35000000000002],[1382,146,239,175,0,222.8,176.35000000000002],[1621,146,226,196,0,207.8,163.35000000000002],[1847,146,197,208,0,177.8,158.35000000000002],[0,354,178,214,0,157.8,146.35000000000002],[178,354,177,215,0,153.8,119.35000000000002],[355,354,179,222,0,152.8,96.35000000000002],[534,354,182,219,0,151.8,75.35000000000002],[534,354,182,219,0,151.8,75.35000000000002],[716,354,181,228,0,153.8,82.35000000000002],[897,354,177,229,0,148.8,84.35000000000002],[1074,354,175,230,0,144.8,86.35000000000002],[1249,354,178,231,0,144.8,87.35000000000002],[1427,354,183,233,0,144.8,88.35000000000002],[1610,354,178,232,0,143.8,87.35000000000002],[1788,354,174,232,0,144.8,88.35000000000002],[0,587,184,231,0,150.8,89.35000000000002],[184,587,192,232,0,155.8,90.35000000000002],[376,587,198,233,0,158.8,91.35000000000002],[574,587,205,226,0,163.8,89.35000000000002],[779,587,199,229,0,159.8,90.35000000000002],[978,587,194,229,0,156.8,89.35000000000002],[1172,587,189,228,0,155.8,87.35000000000002],[1361,587,183,230,0,151.8,86.35000000000002],[1544,587,184,229,0,148.8,84.35000000000002],[1728,587,173,228,0,145.8,83.35000000000002],[0,820,170,228,0,144.8,82.35000000000002],[170,820,173,227,0,146.8,81.35000000000002],[343,820,175,226,0,149.8,81.35000000000002],[518,820,296,281,0,213.8,108.35000000000002],[814,820,433,413,0,253.8,166.35000000000002],[0,1233,824,780,0,452.8,302.35],[0,0,0,0,0,-0.19999999999998863,-0.6499999999999773]],  animations: {start_intro:[0,33, "start_idle"], start_idle:[34,53, true], start_pop:[54,57, false]}});
+    //start button
+    var startButton = new createjs.Sprite(blankPaper);
+    startButton.addEventListener("mousedown",startClicked);
+    startButton.addEventListener("animationend",gameStart);
+    startButton.y = 300;
+    startButton.x = 425;
+    startButton.scaleX = startButton.scaleY = .6;
+    opening.addChild(startButton);
+    stage.update();
+    startButton.gotoAndPlay("start_intro");
+
+    var startTxt = new createjs.Text("Start", "bold 45px Amatic SC", "#000000");
+    startTxt.x = 360;
+    startTxt.y = 285;
+    startTxt.alpha = 0;
+
+    createjs.Ticker.setInterval(TICK_INTERVAL);
+    createjs.Ticker.setFPS(40);
+    createjs.Ticker.addEventListener("tick", tick);
+
+    var title = new createjs.Text("It's For the Best...", "bold 60px Amatic SC", "#000000");
+    title.x = -200;
+    title.y = 50;
+    title.textAlign = "right";
+
+    opening.addChild(title);
+    opening.addChild(startTxt);
+    stage.addChild(opening);
+
+
+    createjs.Tween.get(title).to({x: 400}, 2000);
+    //createjs.Tween.get(startButton).to({x: 375},3000);
+    createjs.Tween.get(startTxt).to({alpha: 1}, 2000);
+}
+
+function startClicked(e) {
+    e.target.gotoAndPlay("start_pop");
+}
+
+function gameStart(e) {
+    if(e.name == "start_pop") {
+        stage.removeChild(opening);
+        gameInit();
+//          endGame();
+    }
+}
+
+function gameRestart(e) {
+    if(e.name == "start_pop") {
+        stage.removeChild(opening);
+        restartGame();
+    }
+}
+
+function gameInit() {
+    game = new createjs.Container();
+
+    paper = new createjs.SpriteSheet({images: [queue.getResult('paper')], frames: [[0,0,133,160,0,119.80000000000001,0.8000000000000007],[0,0,133,160,0,119.80000000000001,0.8000000000000007],[133,0,130,162,0,116.80000000000001,3.8000000000000007],[133,0,130,162,0,116.80000000000001,3.8000000000000007],[263,0,127,162,0,112.80000000000001,4.800000000000001],[263,0,127,162,0,112.80000000000001,4.800000000000001],[390,0,125,164,0,109.80000000000001,6.800000000000001],[390,0,125,164,0,109.80000000000001,6.800000000000001],[515,0,127,165,0,109.80000000000001,7.800000000000001],[515,0,127,165,0,109.80000000000001,7.800000000000001],[642,0,131,166,0,109.80000000000001,7.800000000000001],[642,0,131,166,0,109.80000000000001,7.800000000000001],[773,0,128,166,0,109.80000000000001,7.800000000000001],[773,0,128,166,0,109.80000000000001,7.800000000000001],[0,166,124,165,0,109.80000000000001,7.800000000000001],[0,166,124,165,0,109.80000000000001,7.800000000000001],[124,166,131,165,0,113.80000000000001,8.8],[124,166,131,165,0,113.80000000000001,8.8],[255,166,137,165,0,117.80000000000001,9.8],[255,166,137,165,0,117.80000000000001,9.8],[392,166,142,165,0,119.80000000000001,9.8],[392,166,142,165,0,119.80000000000001,9.8],[534,166,146,161,0,122.80000000000001,8.8],[534,166,146,161,0,122.80000000000001,8.8],[680,166,142,162,0,120.80000000000001,8.8],[680,166,142,162,0,120.80000000000001,8.8],[822,166,139,163,0,118.80000000000001,8.8],[822,166,139,163,0,118.80000000000001,8.8],[0,331,135,162,0,117.80000000000001,6.800000000000001],[0,331,135,162,0,117.80000000000001,6.800000000000001],[135,331,131,164,0,114.80000000000001,6.800000000000001],[135,331,131,164,0,114.80000000000001,6.800000000000001],[266,331,131,164,0,112.80000000000001,5.800000000000001],[266,331,131,164,0,112.80000000000001,5.800000000000001],[397,331,124,163,0,110.80000000000001,4.800000000000001],[397,331,124,163,0,110.80000000000001,4.800000000000001],[521,331,121,163,0,109.80000000000001,3.8000000000000007],[521,331,121,163,0,109.80000000000001,3.8000000000000007],[642,331,123,162,0,110.80000000000001,3.8000000000000007],[642,331,123,162,0,110.80000000000001,3.8000000000000007],[765,331,125,161,0,112.80000000000001,2.8000000000000007],[765,331,125,161,0,112.80000000000001,2.8000000000000007],[0,495,157,120,0,126.80000000000001,-38.2],[157,495,282,115,0,183.8,-53.2],[439,495,359,105,0,225.8,-60.2],[0,615,477,99,0,269.8,-82.2],[0,714,550,74,0,301.8,-122.2],[550,714,0,0,0,-0.19999999999998863,-0.1999999999999993]],  animations: {flutter:[0,41, true], pop:[42,47, true]}});
+    maxPaper = paper.getFrameBounds(0);
+
+    blockers = new Array();
+    coverPapers = new createjs.SpriteSheet({images: [queue.getResult('cover_papers')], frames: [[0,0,0,0,0,-0.25,-0.6000000000000227],[0,0,34,42,0,516.75,-96.60000000000002],[34,0,90,76,0,493.75,-12.600000000000023],[124,0,266,204,0,483.75,173.39999999999998],[390,0,452,317,0,572.75,347.4],[842,0,602,555,0,614.75,503.4],[1444,0,592,534,0,614.75,503.4],[1444,0,592,534,0,614.75,503.4],[2036,0,592,525,0,614.75,503.4],[2036,0,592,525,0,614.75,503.4],[1444,0,592,534,0,614.75,503.4],[842,0,602,555,0,614.75,503.4],[2628,0,722,524,0,638.75,512.4],[2628,0,722,524,0,638.75,512.4],[3350,0,616,603,0,667.75,530.4],[3966,0,104,249,0,646.75,246.39999999999998],[0,0,0,0,0,-0.25,-0.6000000000000227],[0,0,0,0,0,-0.25,-0.6000000000000227],[0,603,47,45,0,-490.25,-154.60000000000002],[47,603,138,79,0,-410.25,-112.60000000000002],[185,603,302,302,0,-277.25,205.39999999999998],[487,603,789,340,0,-56.25,350.4],[1276,603,583,776,0,0.75,696.4],[1859,603,688,584,0,60.75,461.4],[2547,603,679,573,0,51.75,458.4],[2547,603,679,573,0,51.75,458.4],[0,1379,877,589,0,253.75,458.4],[0,1379,877,589,0,253.75,458.4],[877,1379,679,573,0,51.75,458.4],[1859,603,688,584,0,60.75,461.4],[1556,1379,739,523,0,120.75,451.4],[1556,1379,739,523,0,120.75,451.4],[2295,1379,613,278,0,-33.25,469.4],[2908,1379,89,100,0,-523.25,463.4],[0,0,0,0,0,-0.25,-0.6000000000000227],[0,0,0,0,0,-0.25,-0.6000000000000227],[2997,1379,34,32,0,-484.25,-262.6],[3031,1379,97,85,0,-427.25,-209.60000000000002],[3128,1379,202,211,0,-337.25,-97.60000000000002],[3330,1379,497,272,0,-173.25,-59.60000000000002],[0,1968,552,317,0,-85.25,-25.600000000000023],[552,1968,621,450,0,10.75,29.399999999999977],[1173,1968,598,456,0,-12.25,35.39999999999998],[1771,1968,585,451,0,-25.25,30.399999999999977],[2356,1968,578,451,0,-32.25,30.399999999999977],[2934,1968,585,451,0,-25.25,30.399999999999977],[0,2424,585,452,0,-25.25,31.399999999999977],[552,1968,621,450,0,10.75,29.399999999999977],[585,2424,607,335,0,-0.25,-12.600000000000023],[1192,2424,551,352,0,-63.25,1.3999999999999773],[1743,2424,437,238,0,-174.25,-108.60000000000002],[0,0,0,0,0,-0.25,-0.6000000000000227],[0,0,0,0,0,-0.25,-0.6000000000000227],[2180,2424,39,23,0,524.75,-133.60000000000002],[2219,2424,77,53,0,526.75,-142.60000000000002],[2296,2424,200,137,0,483.75,-126.60000000000002],[2496,2424,399,285,0,534.75,-58.60000000000002],[2895,2424,879,385,0,567.75,4.399999999999977],[0,2876,578,386,0,572.75,4.399999999999977],[0,2876,578,386,0,572.75,4.399999999999977],[578,2876,522,389,0,575.75,5.399999999999977],[578,2876,522,389,0,575.75,5.399999999999977],[1100,2876,578,386,0,572.75,4.399999999999977],[1678,2876,596,385,0,567.75,4.399999999999977],[2274,2876,621,418,0,575.75,11.399999999999977],[2895,2876,639,315,0,607.75,-79.60000000000002],[3534,2876,534,180,0,570.75,-212.60000000000002],[0,0,0,0,0,-0.25,-0.6000000000000227]],  animations: {cov01_intro:[0,6, "cov01_flap"], cov01_flap:[7,11, true], cov01_pop:[12,16, false], cov02_intro:[17,23, "cov02_flap"], cov02_flap:[24,29, true], cov02_pop:[30,34, false], cov03_intro:[35,40, "cov03_flap"], cov03_flap:[41,46, true], cov03_pop:[47,51, false], cov04_intro:[52,57, "cov04_flap"], cov04_flap:[58,63, true], cov04_pop:[64,67, false]}});
+
+    pill = new createjs.Bitmap(queue.getResult("pill"));
+    pill.x = stage.canvas.width/2 - 81*pillScale;
+    pill.y = stage.canvas.height*0.7 - 31*pillScale;
+    pill.scaleX = pill.scaleY = pillScale;
+
+    brMound = new createjs.Bitmap(queue.getResult("brMound"));
+    brMound.x = stage.canvas.width + 10;
+    brMound.y = horizon-brMound.getBounds().height;
+
+    //x - -250
+    blMound = new createjs.Bitmap(queue.getResult("blMound"));
+    blMound.x =   -blMound.getBounds().width - 10;
+    blMound.y = horizon-blMound.getBounds().height-30;
+
+    frMound = new createjs.Bitmap(queue.getResult("frMound"));
+    frMound.x = stage.canvas.width + 300;
+    frMound.y = stage.canvas.height - frMound.getBounds().height + 20;
+
+    flMound = new createjs.Bitmap(queue.getResult("flMound"));
+    flMound.x =  -flMound.getBounds().width - 300;
+    flMound.y = stage.canvas.height - (flMound.getBounds().height - 30);
+
+    game.addChild(blMound);
+    game.addChild(brMound);
+    game.addChild(pill);
+    game.addChild(frMound);
+    game.addChild(flMound);
+
+
+    emitter1 = new Emitter(
+            -maxPaper.width*LAYER_1_SCALE,
+            -maxPaper.height*LAYER_1_SCALE,
+            stage.canvas.width*(1-FRONT_PADDING) + maxPaper.width*LAYER_1_SCALE,
+            -maxPaper.height*LAYER_1_SCALE,
+            X_VEL,
+            Y_VEL,
+            RATE,
+            LAYER_1_SCALE
+    );
+    emitter2 = new Emitter(
+            -maxPaper.width*LAYER_2_SCALE + stage.canvas.width*REAR_PADDING,
+            -maxPaper.height*LAYER_2_SCALE,
+            stage.canvas.width+maxPaper.width*LAYER_2_SCALE,
+            -maxPaper.height*LAYER_2_SCALE,
+            -X_VEL*LAYER_2_SPEED,
+            Y_VEL*LAYER_2_SPEED,
+            RATE,
+            LAYER_2_SCALE
+    );
+
+    stage.addChild(game);
+    displayEra();
+    setTimeout(function () {
+        pill.addEventListener("click", gameBegin);
+        pillHighlite = new createjs.Bitmap(queue.getResult("pill_highlite"));
+        pillHighlite.x = pill.x - 80;
+        pillHighlite.y = pill.y - 102;
+        game.addChildAt(pillHighlite, game.getChildIndex(pill) + 1);
+        createjs.Tween.get(pillHighlite, {loop: true}).to({alpha: 0}, 1000, createjs.Ease.backOut());
+    }, 15000);
+}
+
+function gameBegin(e) {
+    game.removeChild(pillHighlite);
+    var text = new createjs.Text("Thank you, baby", "bold 24px Permanent Marker", "#000000");
+    text.x = (stage.canvas.width / 2 ) + 10;
+    text.textAlign = "start";
+    text.alpha = 0;
+    text.y = (stage.canvas.height / 2 );
+    text.maxWidth = stage.canvas.width / 2 - 20;
+    game.addChildAt(text, game.getChildIndex(pill));
+    createjs.Tween.get(text, {override: true}).to({y: (stage.canvas.height / 2 ) - 100, alpha: 1}, 1500, createjs.Ease.cubicOut);
+
+    setTimeout(function () {
+        text.text = "I promise";
+        text.x = (stage.canvas.width / 2 ) + 10;
+        text.y = (stage.canvas.height / 2 );
+        createjs.Tween.get(text, {override: true}).to({y: (stage.canvas.height / 2 ) - 100, alpha: 1}, 1500, createjs.Ease.cubicOut);
+        setTimeout(function () {
+            text.text = "It's for the Best";
+            text.x = (stage.canvas.width / 2 ) + 10;
+            text.y = (stage.canvas.height / 2 );
+            createjs.Tween.get(text, {override: true}).to({y: (stage.canvas.height / 2 ) - 100, alpha: 1}, 1500, createjs.Ease.cubicOut);
+            setTimeout(function () {
+                game.removeChild(text);
+                eraStart();
+            }, 1500);
+        }, 1500);
+    }, 1500);
+
+    emitter1.emit();
+    emitter2.emit();
+
+    bgSound = createjs.Sound.createInstance("bg_sound");
+    bgSound.volume = 0.0;
+    bgSound.play({loop: -1});
+    wind = createjs.Sound.createInstance("wind");
+    wind.volume = .8;
+
+    pill.removeAllEventListeners();
+    pill.addEventListener("click", popPill);
+
+    //timer
+    timer = new createjs.Text("Date:", "bold 60px Amatic SC", "#000000");
+    timer.x += (stage.canvas.width)*0.9;
+    timer.textAlign = "right";
+
+    game.addChildAt(timer, game.getChildIndex(pill));
+
+    wind.play();
+    gameStage = 1;
+}
+
+function endGame() {
+    gameStage = 2;
+    bgSound.volume = 0;
+
+    destroyAllEnemies(false);
+
+    ending = new createjs.Container();
+
+    var rect = new createjs.Shape();
+    rect.graphics.beginFill("#00000000").drawRect(0,0,stage.canvas.width,stage.canvas.height);
+    rect.alpha = 0;
+
+    var endTxt = new createjs.Text("It's for the Best...", "bold 60px Amatic SC", "#ffffffff");
+    endTxt.x = stage.canvas.width/2;
+    endTxt.y = stage.canvas.height/2;
+    endTxt.alpha = 0;
+
+    ending.addChild(rect);
+    ending.addChild(endTxt);
+
+    stage.addChild(ending);
+
+    createjs.Tween.get(rect).to({alpha: 1}, 4000);
+    createjs.Tween.get(endTxt).to({alpha: 1}, 4000);
+    createjs.Sound.play("end_sound",createjs.Sound.INTERRUPT_ANY, 0, 0, 0,1, 0);
+
+    setTimeout(function () {
+        ending.removeChild(endTxt);
+        createjs.Tween.get(rect).to({alpha: 0}, 3000);
+    },5000);
+
+    setTimeout(function() {
+        setTimeout(function() {
+            var credits = new createjs.Text("Jeremy Chambers/\n\n   Programming\n\nHazel Trouble/\n\n   Programming\n\nMike Murphy/   Art\n\n\nJJ Bakken/   Design\n\n\nDoris Rusch/   Producer", "bold 60px Amatic SC", "#ffffffff");
+            credits.x = 10;
+            credits.y = 25;
+            credits.alpha = 0;
+            ending.addChild(credits);
+            createjs.Tween.get(credits).to({alpha: 1}, 2000);
+            setTimeout(function() {
+                createjs.Tween.get(credits).to({alpha: 0}, 2000);
+                setTimeout(function() {
+                   ending.removeChild(credits);
+                },2000);
+            }, 5000);
+        }, 5000);
+    }, 4000);
+
+    setTimeout(function() {
+        var restartButton = new createjs.Sprite(blankPaper);
+        restartButton.addEventListener("mousedown",startClicked);
+        restartButton.addEventListener("animationend",gameRestart);
+        restartButton.y = 300;
+        restartButton.x = 425;
+        restartButton.scaleX = restartButton.scaleY = .6;
+        ending.addChild(restartButton);
+        stage.update();
+        restartButton.gotoAndPlay("start_intro");
+
+        var restartTxt = new createjs.Text("Restart?", "bold 45px Amatic SC", "#000000");
+        restartTxt.x = 360;
+        restartTxt.y = 285;
+        restartTxt.alpha = 0;
+        ending.addChild(restartTxt);
+        createjs.Tween.get(restartTxt).to({alpha: 1}, 2000);
+        stage.update();
+    },17000);
+}
+
+/**
+ *
+ * @param x
+ * @param y
+ * @param velx
+ * @param vely
+ * @param scale
+ * @param layer
+ */
+function createEnemy(x,y,velx,vely,scale){
+    var animation = new createjs.Sprite(paper, "flutter");
+    animation.x = x;
+    animation.y = y;
+    animation.velX = velx;
+    animation.velY = vely;
+    animation.scaleX = animation.scaleY = scale;
+    animation.rotation = Math.atan(animation.velY*(era+0.5)/(animation.velX*era*era)) * (180/Math.PI) + 90;
+    animation.addEventListener("mousedown", enemyClicked);
+    animation.addEventListener("animationend",enemyAnimationComplete);
+    animation.alive = true;
+    animation.seen = false;
+    enemyPool.push(animation);
+    (scale < LAYER_1_SCALE - SCALE_VARIANCE) ? game.addChildAt(animation,game.getChildIndex(brMound) + 1) : game.addChildAt(animation,game.getChildIndex(flMound) + 1);
+}
+
+function destroyEnemy(enemy){enemyPool.splice(enemyPool.indexOf(enemy),1);
+    enemy.removeAllEventListeners();
+    game.removeChild(enemy);
+    enemy = null;
+}
+
+function destroyAllEnemies(hits){
+    for(var i = 0; i < enemyPool.length; i++){
+        if (hits) papersHit++;
+        if (enemyPool[i].alive == true)
+            enemyPool[i].gotoAndPlay("pop");
+        enemyPool[i].alive = false
+    }
+}
+
+function displayEra() {
+    var text = [];
+    var fonts = script[eraNum].fonts;
+    var lines;
+
+    if (eraMissCount > eraMissThreshold) {
+        lines = script[eraNum].lines.failure;
+    } else {
+        lines = script[eraNum].lines.success;
+    }
+
+    for (var i = 0; i < lines.length; i ++) {
+        text.push(new createjs.Text(lines[i][0], fonts[lines[i][2]], "#000000"));
+        if (lines[i][1] == "right") {
+            text[i].x = (stage.canvas.width / 2 ) + 10;
+            text[i].textAlign = "start";
+        } else {
+            text[i].x = (stage.canvas.width / 2 ) - 10;
+            text[i].textAlign = "end";
+        }
+
+        text[i].alpha = 0;
+        text[i].y = (stage.canvas.height / 2 );
+        text[i].maxWidth = stage.canvas.width / 2 - 20;
+        game.addChildAt(text[i], game.getChildIndex(pill));
+    }
+
+    eraMissThreshold *= 2;
+    nextLine(0,text);
+}
+
+function nextLine(index, text) {
+    if (index > 0) game.removeChild(text[index-1]);
+    if (index < text.length) {
+        if (eraNum == 3) {
+            createjs.Sound.play("phone_beep",createjs.Sound.INTERRUPT_ANY, 0, 0, 0,.3, 0);
+        }
+        createjs.Tween.get(text[index], {override: true}).to({y: (stage.canvas.height / 2 ) - 100, alpha: 1}, 1500, createjs.Ease.cubicOut);
+        setTimeout(function () { nextLine(index+1, text);}, 1500);
+    }
+}
+
+//updates enemy coordinates
+function updateEnemies(){
+    var enemy;
+    for(var i=0; i < enemyPool.length; i++)
+    {
+        enemy = enemyPool[i];
+        enemy.x += enemy.velX*era*era;
+        enemy.y += enemy.velY*(era+0.5);
+        enemy.rotation = Math.atan(enemy.velY*(era+0.5)/(enemy.velX*era*era)) * (180/Math.PI) + 90;
+        if(enemy.x > stage.canvas.width + maxPaper.width*LAYER_1_SCALE + 1 ||
+                enemy.y > stage.canvas.height + enemy.getBounds().height ||
+                enemy.x < -(maxPaper.width*LAYER_1_SCALE + 1)
+                ) {
+            if (enemy.seen == true){
+                papersMissed++;
+                eraMissCount++;
+                comboCnt = 0;
+            }
+            destroyEnemy(enemy);
+        }
+        else if (enemy.y > horizon && enemy.velX < 0 && enemy.alive == true) {
+            if (enemy.seen == true) {
+                papersMissed++;
+                eraMissCount++;
+                comboCnt = 0;
+            }
+            enemy.gotoAndPlay("pop");
+            enemy.alive = false
+        }
+        if (enemy.seen == false &&
+                enemy.x > 0 && enemy.x < (stage.canvas.width - (enemy.scaleX*maxPaper.width)) && enemy.y > 0 &&
+                (enemy.y < (horizon - (enemy.scaleY*maxPaper.height)) ||
+                        (enemy.y < (stage.canvas.height - enemy.scaleY*maxPaper.height) && enemy.velX > 0))
+                )   {
+            enemy.seen = true;  }
+    }
+}
+
+//pill has been clicked
+function popPill(e){
+    bgSound.volume += .05;
+    destroyAllEnemies(true);
+    clearBlockers();
+}
+
+//event handler for clicking on an enemy
+function enemyClicked(e){
+    papersHit++;
+    createjs.Sound.play("chimes_" + ((comboCnt++ % 12) + 1),createjs.Sound.INTERRUPT_ANY, 0, 0, 0,.3, 0);
+    e.target.alive = false;
+    e.target.gotoAndPlay("pop");
+}
+
+function incrementDay (x){                                                                                     //HT930
+    myDate.setDate(myDate.getDate()+x);
+    era = (myDate.getFullYear() - 1995)/eradivisor+eraminimum;
+    if (myDate > endDate) {
+        rate = 0;
+        dayIncrement = 0;
+        era = 0;
+        endGame();
+    } else if ((myDate.getMonth() + 1) == 7 && myDate.getDate() == 1) {
+        switch (myDate.getFullYear()) {
+            case 1998:
+                displayEra();
+                break;
+            case 1999:
+                eraStart();
+                break;
+            case 2002:
+                displayEra();
+                break;
+            case 2005:
+                eraStart();
+                break;
+        }
+    } else if ((myDate.getMonth() + 1) == 4 && myDate.getDate() == 1 && myDate.getFullYear() == 2006) {
+        displayEra();
+    }
+
+}
+
+function enemyAnimationComplete(e){
+    if(e.name.indexOf("pop") != -1){
+        if(enemyPool.indexOf(e.target) >= 0){
+            enemyPool.splice(enemyPool.indexOf(e.target),1);
+        }
+        e.target.removeAllEventListeners();
+        game.removeChild(e.target);
+        e.target = null;
+    }
+}
+
+function updateMound() {
+    if(brMound.x > 480) brMound.x--;
+    if(frMound.x > 500) frMound.x-= 2;
+    if(blMound.x < -60) blMound.x++;
+    if(flMound.x < -100) flMound.x+= 2;
+    paperFlag++;
+}
+
+function addBlocker() {
+    if (blockerNum < 4) {
+        blockerFlag = papersMissed;
+
+        blockers.push(new createjs.Sprite(coverPapers));
+
+        blockers[blockerNum].addEventListener("animationend",enemyAnimationComplete);
+        blockers[blockerNum].x = stage.canvas.width/2;
+        blockers[blockerNum].y = stage.canvas.height/2;
+        game.addChild(blockers[blockerNum]);
+        blockers[blockerNum].gotoAndPlay("cov0" + (blockerNum + 1) + "_intro");
+        blockerNum++;
+    }
+}
+
+function clearBlockers() {
+    if (blockerNum > 0) {
+        for (var i = 0; i < blockerNum; i++) {
+            blockers[i].gotoAndPlay("cov0" + (i + 1) + "_pop");
+        }
+        blockerNum = 0;
+        blockers = [];
+    }
+}
+
+function eraStart() {
+    eraNum++;
+    var title = new createjs.Text(script[eraNum].era, "bold 60px Amatic SC", "#000000");
+    title.x = stage.canvas.width / 2;
+    title.y = stage.canvas.height / 2;
+    title.textAlign = "center";
+    game.addChild(title);
+    createjs.Tween.get(title).to({y: 100}, 2000, createjs.Ease.cubicOut);
+    setTimeout(function () { game.removeChild(title); }, 3000);
+    eraMissCount = 0;
+}
+
+//event handler for tick
+function tick(e){
+    if(gameStage == 1) {
+        incrementDay(dayIncrement);
+        timer.text = months[myDate.getMonth()] + " " + ('0' + myDate.getDate()).slice(-2) + ", " + myDate.getFullYear();
+    }
+
+    //console.log("Papers hit: " + papersHit + "Papers Missed: " + papersMissed);
+    if (tickFlag) tickFlag = false;
+    else if (gameStage == 1) {
+        emitter1.emit();
+        emitter2.emit();
+        updateEnemies();
+        myAngle=(myAngle +.3)%360;
+    }
+    if (papersMissed > paperFlag && gameStage == 1) updateMound();
+    if (papersMissed > blockerFlag + 15 -blockerNum * 2 && gameStage == 1) addBlocker();
+    stage.update();
+}
+
+function restartGame() {
+    stage.removeAllChildren();
+
+    gameStage = 0;
+
+    //initialize variables
+    pillCount = papersHit = papersMissed = paperFlag = 0;
+    enemyLimit = 15;
+    enemyPool = new Array();
+    enemyPool2 = new Array();
+
+    tickFlag = true;
+    myDate = new Date();
+    myDate.setFullYear(1995, 7, 5);                     //Aug 5 1995
+    endDate = new Date();
+    endDate.setFullYear(2009, 9, 31);
+
+    era = 0;
+
+    loadCompleted();
+}
+
+</script>
+</head>
+<body style="background-color: black;" onload="init()">
+<canvas id="gameStage" width="1024" height="576" style="background-color: white;"></canvas>
+</body>
+</html>
